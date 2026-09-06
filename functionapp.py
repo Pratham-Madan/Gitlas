@@ -119,7 +119,22 @@ def health(
 # ============================================================
 # Get All Accessible GitHub Repositories
 # ============================================================
+@app.route(
+    route="deployment-test",
+    methods=["GET"],
+)
+def deployment_test(
+    req: func.HttpRequest,
+) -> func.HttpResponse:
 
+    return func.HttpResponse(
+        json.dumps({
+            "status": "deployment successful",
+            "message": "GitHub Actions deployment is working"
+        }),
+        status_code=200,
+        mimetype="application/json",
+    )
 @app.route(
     route="github/repositories",
     methods=["GET"],
