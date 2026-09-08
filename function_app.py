@@ -767,7 +767,6 @@ def github_repository_details(
     repo = req.route_params.get("repo")
 
     if not owner or not repo:
-
         return func.HttpResponse(
             json.dumps({
                 "error": "Owner and repository name are required."
@@ -780,44 +779,79 @@ def github_repository_details(
 
         headers = get_github_headers()
 
-        # ----------------------------------------------------
-        # 1. Repository information
-        # ----------------------------------------------------
+        # ====================================================
+        # 1. Find repository through the GitHub App installation
+        # ====================================================
 
-        repo_url = (
-            f"https://api.github.com/repos/"
-            f"{owner}/{repo}"
-        )
-
-        repo_response = requests.get(
-            repo_url,
+        repositories_response = requests.get(
+            "https://api.github.com/installation/repositories",
             headers=headers,
+            params={
+                "per_page": 100,
+                "page": 1,
+            },
             timeout=30,
         )
 
-        if not repo_response.ok:
-
+        if not repositories_response.ok:
             return func.HttpResponse(
                 json.dumps({
-                    "error": "Unable to retrieve repository.",
-                    "status_code": (
-                        repo_response.status_code
-                    ),
-                    "details": repo_response.text,
+                    "error": "Unable to retrieve installed repositories.",
+                    "status_code": repositories_response.status_code,
+                    "details": repositories_response.text,
                 }),
                 status_code=500,
                 mimetype="application/json",
             )
 
-        repository = repo_response.json()
+        repositories_data = repositories_response.json()
+
+        target_full_name = f"{owner}/{repo}".lower()
+
+        repository = None
+
+        for candidate in repositories_data.get(
+            "repositories",
+            []
+        ):
+
+            if (
+                candidate.get("full_name", "").lower()
+                == target_full_name
+            ):
+                repository = candidate
+                break
+
+        if repository is None:
+            return func.HttpResponse(
+                json.dumps({
+                    "error": "Repository is not accessible through the GitHub App installation.",
+                    "requested_repository": (
+                        f"{owner}/{repo}"
+                    ),
+                    "available_repositories": [
+                        r.get("full_name")
+                        for r in repositories_data.get(
+                            "repositories",
+                            []
+                        )
+                    ],
+                }),
+                status_code=404,
+                mimetype="application/json",
+            )
+
+        # ====================================================
+        # 2. Get repository details
+        # ====================================================
 
         default_branch = repository.get(
             "default_branch"
         )
 
-        # ----------------------------------------------------
-        # 2. Repository file tree
-        # ----------------------------------------------------
+        # ====================================================
+        # 3. Get repository file tree
+        # ====================================================
 
         files = []
 
@@ -826,12 +860,15 @@ def github_repository_details(
             tree_url = (
                 f"https://api.github.com/repos/"
                 f"{owner}/{repo}/git/trees/"
-                f"{default_branch}?recursive=1"
+                f"{default_branch}"
             )
 
             tree_response = requests.get(
                 tree_url,
                 headers=headers,
+                params={
+                    "recursive": "1"
+                },
                 timeout=30,
             )
 
@@ -852,9 +889,9 @@ def github_repository_details(
                     if item.get("type") == "blob"
                 ]
 
-        # ----------------------------------------------------
-        # 3. README
-        # ----------------------------------------------------
+        # ====================================================
+        # 4. Get README
+        # ====================================================
 
         readme_content = None
         readme_name = None
@@ -900,9 +937,9 @@ def github_repository_details(
 
                     readme_content = None
 
-        # ----------------------------------------------------
-        # 4. Detect important project files
-        # ----------------------------------------------------
+        # ====================================================
+        # 5. Detect project files
+        # ====================================================
 
         file_paths = [
             file["path"]
@@ -926,11 +963,9 @@ def github_repository_details(
 
             lower_path = path.lower()
 
-            # README
             if lower_path.startswith("readme"):
                 project_files["readme"].append(path)
 
-            # Python
             if (
                 lower_path.endswith(".py")
                 or lower_path == "requirements.txt"
@@ -938,7 +973,6 @@ def github_repository_details(
             ):
                 project_files["python"].append(path)
 
-            # JavaScript
             if (
                 lower_path.endswith(".js")
                 or lower_path == "package.json"
@@ -946,14 +980,12 @@ def github_repository_details(
             ):
                 project_files["javascript"].append(path)
 
-            # TypeScript
             if (
                 lower_path.endswith(".ts")
                 or lower_path.endswith(".tsx")
             ):
                 project_files["typescript"].append(path)
 
-            # .NET
             if (
                 lower_path.endswith(".cs")
                 or lower_path.endswith(".csproj")
@@ -961,7 +993,6 @@ def github_repository_details(
             ):
                 project_files["dotnet"].append(path)
 
-            # Java
             if (
                 lower_path.endswith(".java")
                 or lower_path == "pom.xml"
@@ -969,21 +1000,18 @@ def github_repository_details(
             ):
                 project_files["java"].append(path)
 
-            # Database
             if (
                 lower_path.endswith(".sql")
                 or "migration" in lower_path
             ):
                 project_files["database"].append(path)
 
-            # Docker
             if (
                 "dockerfile" in lower_path
                 or "docker-compose" in lower_path
             ):
                 project_files["docker"].append(path)
 
-            # Configuration
             if (
                 lower_path.endswith(".json")
                 or lower_path.endswith(".yaml")
@@ -994,9 +1022,9 @@ def github_repository_details(
                     "configuration"
                 ].append(path)
 
-        # ----------------------------------------------------
-        # 5. Extract POC metadata
-        # ----------------------------------------------------
+        # ====================================================
+        # 6. Extract POC metadata
+        # ====================================================
 
         poc_metadata = extract_poc_metadata(
             repository=repository,
@@ -1005,54 +1033,60 @@ def github_repository_details(
             project_files=project_files,
         )
 
-        # ----------------------------------------------------
-        # 6. Build final response
-        # ----------------------------------------------------
+        # ====================================================
+        # 7. Build POC object
+        # ====================================================
+
+        poc = {
+
+            "POCId": None,
+
+            "Name": repository.get(
+                "name"
+            ),
+
+            "Description": repository.get(
+                "description"
+            ),
+
+            "Summary": generate_summary(
+                repository.get("description"),
+                readme_content,
+            ),
+
+            "SourceType": "GitHub",
+
+            "SourceId": str(
+                repository.get("id")
+            ),
+
+            "RepositoryUrl": repository.get(
+                "html_url"
+            ),
+
+            "Owner": repository.get(
+                "owner",
+                {}
+            ).get(
+                "login"
+            ),
+
+            "CreatedDate": repository.get(
+                "created_at"
+            ),
+
+            "ModifiedDate": repository.get(
+                "updated_at"
+            ),
+        }
+
+        # ====================================================
+        # 8. Final response
+        # ====================================================
 
         result = {
 
-            "poc": {
-
-                "POCId": None,
-
-                "Name": repository.get(
-                    "name"
-                ),
-
-                "Description": repository.get(
-                    "description"
-                ),
-
-                "Summary": generate_summary(
-                    repository.get("description"),
-                    readme_content,
-                ),
-
-                "SourceType": "GitHub",
-
-                "SourceId": str(
-                    repository.get("id")
-                ),
-
-                "RepositoryUrl": repository.get(
-                    "html_url"
-                ),
-
-                "Owner": repository.get(
-                    "owner",
-                    {}
-                ).get(
-                    "login"
-                ),
-
-                "CreatedDate": repository.get(
-                    "created_at"
-                ),
-
-                "ModifiedDate": repository.get(
-                    "updated_at"
-                ),
-            },
+            "poc": poc,
 
             "POCMetadata": poc_metadata,
 
