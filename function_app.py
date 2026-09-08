@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import re
 import time
 
 import azure.functions as func
@@ -96,6 +97,545 @@ def get_github_headers() -> dict:
 
 
 # ============================================================
+# Metadata Extraction Helpers
+# ============================================================
+
+def contains_any(text: str, keywords: list[str]) -> bool:
+    """
+    Returns True if any keyword exists in the supplied text.
+    Case-insensitive.
+    """
+
+    text = text.lower()
+
+    return any(
+        keyword.lower() in text
+        for keyword in keywords
+    )
+
+
+def unique_values(values: list[str]) -> list[str]:
+    """
+    Removes duplicates while preserving order.
+    """
+
+    result = []
+
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+
+    return result
+
+
+def detect_programming_languages(
+    repository_language: str | None,
+    project_files: dict,
+) -> list[str]:
+
+    languages = []
+
+    if repository_language:
+        languages.append(repository_language)
+
+    if project_files.get("python"):
+        languages.append("Python")
+
+    if project_files.get("javascript"):
+        languages.append("JavaScript")
+
+    if project_files.get("typescript"):
+        languages.append("TypeScript")
+
+    if project_files.get("dotnet"):
+        languages.append("C#")
+
+    if project_files.get("java"):
+        languages.append("Java")
+
+    return unique_values(languages)
+
+
+def detect_technologies(
+    file_paths: list[str],
+    readme: str,
+    repository_language: str | None,
+) -> list[str]:
+
+    technologies = []
+
+    text = readme.lower()
+    paths = " ".join(file_paths).lower()
+
+    if repository_language:
+        technologies.append(repository_language)
+
+    if ".py" in paths or "requirements.txt" in paths:
+        technologies.append("Python")
+
+    if ".js" in paths or "package.json" in paths:
+        technologies.append("JavaScript")
+
+    if ".ts" in paths or ".tsx" in paths:
+        technologies.append("TypeScript")
+
+    if ".cs" in paths or ".csproj" in paths:
+        technologies.append(".NET")
+
+    if ".java" in paths or "pom.xml" in paths:
+        technologies.append("Java")
+
+    if "react" in text or "react" in paths:
+        technologies.append("React")
+
+    if "angular" in text or "angular" in paths:
+        technologies.append("Angular")
+
+    if "vue" in text or "vue" in paths:
+        technologies.append("Vue.js")
+
+    if "node.js" in text or "nodejs" in text:
+        technologies.append("Node.js")
+
+    if "python" in text:
+        technologies.append("Python")
+
+    if "docker" in text or "dockerfile" in paths:
+        technologies.append("Docker")
+
+    if "kubernetes" in text or "k8s" in text:
+        technologies.append("Kubernetes")
+
+    if "terraform" in text or ".tf" in paths:
+        technologies.append("Terraform")
+
+    return unique_values(technologies)
+
+
+def detect_frameworks(
+    file_paths: list[str],
+    readme: str,
+) -> list[str]:
+
+    frameworks = []
+
+    text = readme.lower()
+    paths = " ".join(file_paths).lower()
+
+    framework_rules = {
+        "FastAPI": [
+            "fastapi",
+        ],
+        "Flask": [
+            "flask",
+        ],
+        "Django": [
+            "django",
+        ],
+        "React": [
+            "react",
+            "next.js",
+            "nextjs",
+        ],
+        "Angular": [
+            "angular",
+        ],
+        "Vue.js": [
+            "vue",
+        ],
+        "ASP.NET Core": [
+            "asp.net",
+            "aspnet",
+            "microsoft.aspnetcore",
+        ],
+        "Spring Boot": [
+            "spring boot",
+            "spring-boot",
+        ],
+        "Express.js": [
+            "express",
+        ],
+    }
+
+    combined_text = f"{text} {paths}"
+
+    for framework, keywords in framework_rules.items():
+
+        if contains_any(combined_text, keywords):
+            frameworks.append(framework)
+
+    return unique_values(frameworks)
+
+
+def detect_cloud(
+    readme: str,
+    file_paths: list[str],
+) -> list[str]:
+
+    clouds = []
+
+    text = readme.lower()
+    paths = " ".join(file_paths).lower()
+
+    combined_text = f"{text} {paths}"
+
+    cloud_rules = {
+        "Azure": [
+            "azure",
+            "microsoft azure",
+            "azure functions",
+            "azure sql",
+            "azure storage",
+        ],
+        "AWS": [
+            "aws",
+            "amazon web services",
+            "lambda",
+            "s3",
+            "ec2",
+            "dynamodb",
+        ],
+        "Google Cloud": [
+            "google cloud",
+            "gcp",
+            "cloud run",
+            "cloud functions",
+            "bigquery",
+        ],
+    }
+
+    for cloud, keywords in cloud_rules.items():
+
+        if contains_any(combined_text, keywords):
+            clouds.append(cloud)
+
+    return unique_values(clouds)
+
+
+def detect_databases(
+    readme: str,
+    file_paths: list[str],
+) -> list[str]:
+
+    databases = []
+
+    text = readme.lower()
+    paths = " ".join(file_paths).lower()
+
+    combined_text = f"{text} {paths}"
+
+    database_rules = {
+        "SQL Server": [
+            "sql server",
+            "mssql",
+            "sqlserver",
+        ],
+        "Azure SQL": [
+            "azure sql",
+        ],
+        "PostgreSQL": [
+            "postgresql",
+            "postgres",
+        ],
+        "MySQL": [
+            "mysql",
+        ],
+        "SQLite": [
+            "sqlite",
+        ],
+        "MongoDB": [
+            "mongodb",
+            "mongo",
+        ],
+        "Cosmos DB": [
+            "cosmos db",
+            "cosmosdb",
+        ],
+        "Redis": [
+            "redis",
+        ],
+    }
+
+    for database, keywords in database_rules.items():
+
+        if contains_any(combined_text, keywords):
+            databases.append(database)
+
+    return unique_values(databases)
+
+
+def detect_domain(readme: str) -> str | None:
+
+    text = readme.lower()
+
+    domain_rules = {
+        "Authentication & Security": [
+            "authentication",
+            "authorization",
+            "login",
+            "identity",
+            "oauth",
+            "jwt",
+        ],
+        "Finance": [
+            "finance",
+            "financial",
+            "billing",
+            "invoice",
+            "payment",
+        ],
+        "Healthcare": [
+            "healthcare",
+            "medical",
+            "hospital",
+            "patient",
+        ],
+        "Human Resources": [
+            "hrms",
+            "human resources",
+            "employee management",
+            "recruitment",
+            "payroll",
+        ],
+        "E-commerce": [
+            "e-commerce",
+            "ecommerce",
+            "shopping cart",
+            "product catalog",
+            "order management",
+        ],
+        "Education": [
+            "education",
+            "student management",
+            "learning management",
+            "course management",
+        ],
+        "CRM": [
+            "crm",
+            "customer relationship",
+            "customer management",
+        ],
+    }
+
+    for domain, keywords in domain_rules.items():
+
+        if contains_any(text, keywords):
+            return domain
+
+    return None
+
+
+def detect_use_case(readme: str) -> str | None:
+
+    if not readme:
+        return None
+
+    # Remove common Markdown formatting.
+    cleaned = re.sub(
+        r"[#>*`]",
+        "",
+        readme,
+    )
+
+    lines = [
+        line.strip()
+        for line in cleaned.splitlines()
+        if line.strip()
+    ]
+
+    if not lines:
+        return None
+
+    # Look for explicit purpose/use-case sections.
+    use_case_headers = [
+        "purpose",
+        "use case",
+        "use-case",
+        "overview",
+        "about",
+        "description",
+    ]
+
+    for index, line in enumerate(lines):
+
+        lower_line = line.lower().rstrip(":")
+
+        if lower_line in use_case_headers:
+
+            for next_line in lines[index + 1:]:
+                if len(next_line) > 30:
+                    return next_line[:1000]
+
+    # Fall back to the first meaningful README paragraph.
+    for line in lines:
+
+        lower_line = line.lower()
+
+        if (
+            len(line) > 40
+            and not lower_line.startswith(
+                (
+                    "installation",
+                    "requirements",
+                    "usage",
+                    "features",
+                    "setup",
+                    "getting started",
+                )
+            )
+        ):
+            return line[:1000]
+
+    return None
+
+
+def detect_architecture(
+    readme: str,
+    file_paths: list[str],
+) -> list[str]:
+
+    architecture = []
+
+    text = readme.lower()
+    paths = " ".join(file_paths).lower()
+
+    combined_text = f"{text} {paths}"
+
+    architecture_rules = {
+        "REST API": [
+            "rest api",
+            "restful",
+            "rest endpoint",
+            "api endpoint",
+        ],
+        "Microservices": [
+            "microservices",
+            "microservice",
+        ],
+        "Serverless": [
+            "serverless",
+            "azure functions",
+            "aws lambda",
+            "cloud functions",
+        ],
+        "MVC": [
+            "mvc",
+            "model view controller",
+        ],
+        "Event-Driven": [
+            "event-driven",
+            "event driven",
+            "message queue",
+            "event bus",
+        ],
+        "Monolithic": [
+            "monolith",
+            "monolithic",
+        ],
+    }
+
+    for architecture_name, keywords in architecture_rules.items():
+
+        if contains_any(combined_text, keywords):
+            architecture.append(architecture_name)
+
+    return unique_values(architecture)
+
+
+def generate_summary(
+    description: str | None,
+    readme: str | None,
+) -> str | None:
+
+    if description:
+        return description
+
+    if not readme:
+        return None
+
+    cleaned = re.sub(
+        r"[#>*`]",
+        "",
+        readme,
+    )
+
+    lines = [
+        line.strip()
+        for line in cleaned.splitlines()
+        if line.strip()
+    ]
+
+    for line in lines:
+
+        if len(line) >= 40:
+            return line[:1000]
+
+    return None
+
+
+def extract_poc_metadata(
+    repository: dict,
+    readme: str | None,
+    file_paths: list[str],
+    project_files: dict,
+) -> dict:
+
+    readme_text = readme or ""
+
+    programming_languages = (
+        detect_programming_languages(
+            repository.get("language"),
+            project_files,
+        )
+    )
+
+    technologies = detect_technologies(
+        file_paths,
+        readme_text,
+        repository.get("language"),
+    )
+
+    frameworks = detect_frameworks(
+        file_paths,
+        readme_text,
+    )
+
+    cloud = detect_cloud(
+        readme_text,
+        file_paths,
+    )
+
+    databases = detect_databases(
+        readme_text,
+        file_paths,
+    )
+
+    domain = detect_domain(
+        readme_text,
+    )
+
+    use_case = detect_use_case(
+        readme_text,
+    )
+
+    architecture = detect_architecture(
+        readme_text,
+        file_paths,
+    )
+
+    return {
+        "Technology": technologies,
+        "Framework": frameworks,
+        "Cloud": cloud,
+        "DatabaseType": databases,
+        "ProgrammingLanguage": programming_languages,
+        "Domain": domain,
+        "UseCase": use_case,
+        "Architecture": architecture,
+    }
+
+
+# ============================================================
 # Health Check
 # ============================================================
 
@@ -117,8 +657,9 @@ def health(
 
 
 # ============================================================
-# Get All Accessible GitHub Repositories
+# Deployment Test
 # ============================================================
+
 @app.route(
     route="deployment-test",
     methods=["GET"],
@@ -135,6 +676,12 @@ def deployment_test(
         status_code=200,
         mimetype="application/json",
     )
+
+
+# ============================================================
+# Get All Accessible GitHub Repositories
+# ============================================================
+
 @app.route(
     route="github/repositories",
     methods=["GET"],
@@ -144,6 +691,7 @@ def github_repositories(
 ) -> func.HttpResponse:
 
     try:
+
         headers = get_github_headers()
 
         response = requests.get(
@@ -153,6 +701,7 @@ def github_repositories(
         )
 
         if not response.ok:
+
             return func.HttpResponse(
                 json.dumps({
                     "connected": False,
@@ -218,6 +767,7 @@ def github_repository_details(
     repo = req.route_params.get("repo")
 
     if not owner or not repo:
+
         return func.HttpResponse(
             json.dumps({
                 "error": "Owner and repository name are required."
@@ -246,6 +796,7 @@ def github_repository_details(
         )
 
         if not repo_response.ok:
+
             return func.HttpResponse(
                 json.dumps({
                     "error": "Unable to retrieve repository.",
@@ -346,6 +897,7 @@ def github_repository_details(
                     )
 
                 except Exception:
+
                     readme_content = None
 
         # ----------------------------------------------------
@@ -443,14 +995,72 @@ def github_repository_details(
                 ].append(path)
 
         # ----------------------------------------------------
-        # 5. Build final response
+        # 5. Extract POC metadata
+        # ----------------------------------------------------
+
+        poc_metadata = extract_poc_metadata(
+            repository=repository,
+            readme=readme_content,
+            file_paths=file_paths,
+            project_files=project_files,
+        )
+
+        # ----------------------------------------------------
+        # 6. Build final response
         # ----------------------------------------------------
 
         result = {
 
+            "poc": {
+
+                "POCId": None,
+
+                "Name": repository.get(
+                    "name"
+                ),
+
+                "Description": repository.get(
+                    "description"
+                ),
+
+                "Summary": generate_summary(
+                    repository.get("description"),
+                    readme_content,
+                ),
+
+                "SourceType": "GitHub",
+
+                "SourceId": str(
+                    repository.get("id")
+                ),
+
+                "RepositoryUrl": repository.get(
+                    "html_url"
+                ),
+
+                "Owner": repository.get(
+                    "owner",
+                    {}
+                ).get(
+                    "login"
+                ),
+
+                "CreatedDate": repository.get(
+                    "created_at"
+                ),
+
+                "ModifiedDate": repository.get(
+                    "updated_at"
+                ),
+            },
+
+            "POCMetadata": poc_metadata,
+
             "repository": {
 
-                "id": repository.get("id"),
+                "id": repository.get(
+                    "id"
+                ),
 
                 "name": repository.get(
                     "name"
