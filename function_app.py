@@ -1309,3 +1309,25 @@ def azure_devops_projects(
             status_code=500,
             mimetype="application/json",
         )
+
+@app.route(
+    route="azuredevops/projects-test",
+    methods=["GET"],
+)
+def azure_devops_projects_test(
+    req: func.HttpRequest,
+) -> func.HttpResponse:
+
+    token = get_azure_devops_token()
+
+    response = requests.get(
+        "https://dev.azure.com/Gitlas-Demo-Org/_apis/projects?api-version=7.1",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    return func.HttpResponse(
+        response.text,
+        status_code=response.status_code
+    )
