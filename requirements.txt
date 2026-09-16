@@ -2,3 +2,4 @@ azure-functions
 PyJWT
 cryptography
 requests
+azure-identity
