@@ -647,7 +647,45 @@ def extract_poc_metadata(
         "UseCase": use_case,
         "Architecture": architecture,
     }
+#test
 
+@app.route(
+    route="azuredevops/token-details",
+    methods=["GET"],
+)
+def azure_devops_token_details(
+    req: func.HttpRequest,
+) -> func.HttpResponse:
+
+    try:
+
+        token = get_azure_devops_token()
+
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+
+        claims = json.loads(
+            base64.urlsafe_b64decode(payload)
+        )
+
+        return func.HttpResponse(
+            json.dumps({
+                "oid": claims.get("oid"),
+                "appid": claims.get("appid"),
+                "tid": claims.get("tid")
+            }),
+            mimetype="application/json",
+        )
+
+    except Exception as exc:
+
+        return func.HttpResponse(
+            json.dumps({
+                "error": str(exc)
+            }),
+            status_code=500,
+            mimetype="application/json",
+        )
 
 # ============================================================
 # Health Check
