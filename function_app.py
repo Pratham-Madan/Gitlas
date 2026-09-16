@@ -1311,23 +1311,34 @@ def azure_devops_projects(
         )
 
 @app.route(
-    route="azuredevops/projects-test",
+    route="azuredevops/graph-users",
     methods=["GET"],
 )
-def azure_devops_projects_test(
+def azure_devops_graph_users(
     req: func.HttpRequest,
 ) -> func.HttpResponse:
 
-    token = get_azure_devops_token()
+    try:
 
-    response = requests.get(
-        "https://dev.azure.com/Gitlas-Demo-Org/_apis/projects?api-version=7.1",
-        headers={
-            "Authorization": f"Bearer {token}"
-        }
-    )
+        token = get_azure_devops_token()
 
-    return func.HttpResponse(
-        response.text,
-        status_code=response.status_code
-    )
+        response = requests.get(
+            "https://vssps.dev.azure.com/Gitlas-Demo-Org/_apis/graph/users?api-version=7.1-preview.1",
+            headers={
+                "Authorization": f"Bearer {token}"
+            },
+            timeout=30
+        )
+
+        return func.HttpResponse(
+            response.text,
+            status_code=response.status_code,
+            mimetype="application/json"
+        )
+
+    except Exception as ex:
+
+        return func.HttpResponse(
+            str(ex),
+            status_code=500
+        )
