@@ -4,6 +4,7 @@ import os
 import re
 import time
 
+from azure.identity import ManagedIdentityCredential
 import azure.functions as func
 import jwt
 import requests
@@ -96,6 +97,19 @@ def get_github_headers() -> dict:
     }
 
 
+# ============================================================
+# Azure DevOps Authentication
+# ============================================================
+
+def get_azure_devops_token() -> str:
+
+    credential = ManagedIdentityCredential()
+
+    token = credential.get_token(
+        "499b84ac-1321-427f-aa17-267ca6975798/.default"
+    )
+
+    return token.token
 # ============================================================
 # Metadata Extraction Helpers
 # ============================================================
@@ -1187,6 +1201,88 @@ def github_repository_details(
         return func.HttpResponse(
             json.dumps({
                 "error": str(exc),
+            }),
+            status_code=500,
+            mimetype="application/json",
+        )
+# ============================================================
+# Azure DevOps Test
+# ============================================================
+
+# ============================================================
+# Azure DevOps Token Test
+# ============================================================
+
+@app.route(
+    route="azuredevops/token-test",
+    methods=["GET"],
+)
+def azure_devops_token_test(
+    req: func.HttpRequest,
+) -> func.HttpResponse:
+
+    try:
+
+        token = get_azure_devops_token()
+
+        return func.HttpResponse(
+            json.dumps({
+                "success": True,
+                "message": "Managed Identity token acquired successfully"
+            }),
+            status_code=200,
+            mimetype="application/json",
+        )
+
+    except Exception as exc:
+
+        return func.HttpResponse(
+            json.dumps({
+                "success": False,
+                "error": str(exc)
+            }),
+            status_code=500,
+            mimetype="application/json",
+        )
+
+# ============================================================
+# Azure DevOps Projects
+# ============================================================
+
+@app.route(
+    route="azuredevops/projects",
+    methods=["GET"],
+)
+def azure_devops_projects(
+    req: func.HttpRequest,
+) -> func.HttpResponse:
+
+    try:
+
+        token = get_azure_devops_token()
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-type": "application/json"
+        }
+
+        response = requests.get(
+            "https://dev.azure.com/Gitlas-Demo-Org/_apis/projects?api-version=7.1",
+            headers=headers,
+            timeout=30,
+        )
+
+        return func.HttpResponse(
+            response.text,
+            status_code=response.status_code,
+            mimetype="application/json",
+        )
+
+    except Exception as exc:
+
+        return func.HttpResponse(
+            json.dumps({
+                "error": str(exc)
             }),
             status_code=500,
             mimetype="application/json",
