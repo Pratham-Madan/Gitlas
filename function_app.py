@@ -1249,7 +1249,7 @@ def azure_devops_projects(
             status_code=500,
             mimetype="application/json",
         )
-        @app.route(
+@app.route(
     route="azuredevops/repositories",
     methods=["GET"],
 )
