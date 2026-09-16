@@ -110,6 +110,16 @@ def get_azure_devops_token() -> str:
     )
 
     return token.token
+
+
+def get_azure_devops_headers() -> dict:
+
+    return {
+        "Authorization": (
+            f"Bearer {get_azure_devops_token()}"
+        ),
+        "Content-Type": "application/json",
+    }
 # ============================================================
 # Metadata Extraction Helpers
 # ============================================================
@@ -647,30 +657,6 @@ def extract_poc_metadata(
         "UseCase": use_case,
         "Architecture": architecture,
     }
-#test
-
-
-@app.route(
-    route="azuredevops/token-details",
-    methods=["GET"],
-)
-def azure_devops_token_details(
-    req: func.HttpRequest,
-) -> func.HttpResponse:
-
-    token = get_azure_devops_token()
-
-    payload = token.split(".")[1]
-    payload += "=" * (-len(payload) % 4)
-
-    claims = json.loads(
-        base64.urlsafe_b64decode(payload)
-    )
-
-    return func.HttpResponse(
-        json.dumps(claims, indent=2),
-        mimetype="application/json",
-    )
 # ============================================================
 # Health Check
 # ============================================================
@@ -1227,45 +1213,6 @@ def github_repository_details(
             status_code=500,
             mimetype="application/json",
         )
-# ============================================================
-# Azure DevOps Test
-# ============================================================
-
-# ============================================================
-# Azure DevOps Token Test
-# ============================================================
-
-@app.route(
-    route="azuredevops/token-test",
-    methods=["GET"],
-)
-def azure_devops_token_test(
-    req: func.HttpRequest,
-) -> func.HttpResponse:
-
-    try:
-
-        token = get_azure_devops_token()
-
-        return func.HttpResponse(
-            json.dumps({
-                "success": True,
-                "message": "Managed Identity token acquired successfully"
-            }),
-            status_code=200,
-            mimetype="application/json",
-        )
-
-    except Exception as exc:
-
-        return func.HttpResponse(
-            json.dumps({
-                "success": False,
-                "error": str(exc)
-            }),
-            status_code=500,
-            mimetype="application/json",
-        )
 
 # ============================================================
 # Azure DevOps Projects
@@ -1281,16 +1228,9 @@ def azure_devops_projects(
 
     try:
 
-        token = get_azure_devops_token()
-
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-type": "application/json"
-        }
-
         response = requests.get(
-            "https://dev.azure.com/Gitlas-Demo-Org/_apis/projects?api-version=7.1",
-            headers=headers,
+            "https://dev.azure.com/Gitlas-poc/_apis/projects?api-version=7.1",
+            headers=get_azure_devops_headers(),
             timeout=30,
         )
 
@@ -1310,35 +1250,3 @@ def azure_devops_projects(
             mimetype="application/json",
         )
 
-@app.route(
-    route="azuredevops/graph-users",
-    methods=["GET"],
-)
-def azure_devops_graph_users(
-    req: func.HttpRequest,
-) -> func.HttpResponse:
-
-    try:
-
-        token = get_azure_devops_token()
-
-        response = requests.get(
-            "https://vssps.dev.azure.com/Gitlas-Demo-Org/_apis/graph/users?api-version=7.1-preview.1",
-            headers={
-                "Authorization": f"Bearer {token}"
-            },
-            timeout=30
-        )
-
-        return func.HttpResponse(
-            response.text,
-            status_code=response.status_code,
-            mimetype="application/json"
-        )
-
-    except Exception as ex:
-
-        return func.HttpResponse(
-            str(ex),
-            status_code=500
-        )
