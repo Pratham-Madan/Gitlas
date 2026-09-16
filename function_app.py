@@ -1249,4 +1249,74 @@ def azure_devops_projects(
             status_code=500,
             mimetype="application/json",
         )
+        @app.route(
+    route="azuredevops/repositories",
+    methods=["GET"],
+)
+def azure_devops_repositories(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        response = requests.get(
+            "https://dev.azure.com/Gitlas-poc/Gitlas/_apis/git/repositories?api-version=7.1",
+            headers=get_azure_devops_headers(),
+            timeout=30,
+        )
+
+        if not response.ok:
+            return func.HttpResponse(
+                json.dumps(
+                    {
+                        "connected": False,
+                        "error": (
+                            f"Azure DevOps API returned "
+                            f"{response.status_code}: {response.text}"
+                        ),
+                    }
+                ),
+                status_code=response.status_code,
+                mimetype="application/json",
+            )
+
+        data = response.json()
+
+        repositories = []
+
+        for repo in data.get("value", []):
+            repositories.append(
+                {
+                    "id": repo.get("id"),
+                    "name": repo.get("name"),
+                    "project": repo.get("project", {}).get("name"),
+                    "default_branch": repo.get("defaultBranch"),
+                    "web_url": repo.get("webUrl"),
+                    "remote_url": repo.get("remoteUrl"),
+                    "size": repo.get("size"),
+                    "is_disabled": repo.get("isDisabled", False),
+                }
+            )
+
+        result = {
+            "connected": True,
+            "organization": "Gitlas-poc",
+            "project": "Gitlas",
+            "repository_count": len(repositories),
+            "repositories": repositories,
+        }
+
+        return func.HttpResponse(
+            json.dumps(result),
+            status_code=200,
+            mimetype="application/json",
+        )
+
+    except Exception as exc:
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "connected": False,
+                    "error": str(exc),
+                }
+            ),
+            status_code=500,
+            mimetype="application/json",
+        )
 
