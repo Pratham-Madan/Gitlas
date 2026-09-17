@@ -778,7 +778,7 @@ def github_repositories(
 # ============================================================
 
 @app.route(
-    route="github/repository/${owner}/${repo}",
+    route="github/repository/{owner}/{repo}",
     methods=["GET"],
 )
 def github_repository_details(
