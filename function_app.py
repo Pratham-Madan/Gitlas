@@ -787,12 +787,11 @@ def github_repository_details(
     req: func.HttpRequest,
 ) -> func.HttpResponse:
 
-    try:
-        owner = req.route_params.get("owner")
-        repo = req.route_params.get("repo")
+    owner = req.route_params.get("owner")
+    repo = req.route_params.get("repo")
     
-        logging.info(f"owner={owner}")
-        logging.info(f"repo={repo}")
+    logging.info(f"owner={owner}")
+    logging.info(f"repo={repo}")
     
     if not owner or not repo:
         return func.HttpResponse(
