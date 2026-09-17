@@ -3,6 +3,8 @@ import json
 import os
 import re
 import time
+import logging
+
 
 from azure.identity import ManagedIdentityCredential
 import azure.functions as func
@@ -785,11 +787,13 @@ def github_repository_details(
     req: func.HttpRequest,
 ) -> func.HttpResponse:
 
-    owner = req.route_params.get("owner")
-    repo = req.route_params.get("repo")
-
-    logging.info(f"owner={owner}")
-    logging.info(f"repo={repo}")
+    try:
+        owner = req.route_params.get("owner")
+        repo = req.route_params.get("repo")
+    
+        logging.info(f"owner={owner}")
+        logging.info(f"repo={repo}")
+    
     if not owner or not repo:
         return func.HttpResponse(
             json.dumps({
