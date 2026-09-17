@@ -3,8 +3,6 @@ import json
 import os
 import re
 import time
-import logging
-
 
 from azure.identity import ManagedIdentityCredential
 import azure.functions as func
@@ -780,7 +778,7 @@ def github_repositories(
 # ============================================================
 
 @app.route(
-    route="github/repository/{owner}/{repo}",
+    route="github/repository/${owner}/${repo}",
     methods=["GET"],
 )
 def github_repository_details(
@@ -790,8 +788,6 @@ def github_repository_details(
     owner = req.route_params.get("owner")
     repo = req.route_params.get("repo")
     
-    logging.info(f"owner={owner}")
-    logging.info(f"repo={repo}")
     
     if not owner or not repo:
         return func.HttpResponse(
